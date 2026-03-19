@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
@@ -17,6 +17,9 @@ import {
 } from "@/lib/migration-storage";
 
 const mockToastError = toast.error as ReturnType<typeof vi.fn>;
+const mockFetch = vi.fn();
+
+global.fetch = mockFetch as typeof fetch;
 
 function createFileFromContent(name: string, content: string) {
   return new File([content], name, { type: "text/plain" });
@@ -93,7 +96,12 @@ async function uploadViaModal(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockFetch.mockReset();
   window.localStorage.removeItem(MIGRATION_STORAGE_KEY);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("MIGRATE-001: 빈 상태 안내", () => {
@@ -602,5 +610,177 @@ describe("MIGRATE-024: 태그별 뷰 빈 상태", () => {
 
     expect(await screen.findByText("전체 파일")).toBeInTheDocument();
     expect(screen.getByText("LegacyBridge.swift")).toBeInTheDocument();
+  });
+});
+
+describe("MIGRATE-025: 로컬 개발 전용 Git 자동화 UI 노출", () => {
+  it("테스트 환경에서는 Git 자동화 설정 입력과 버튼이 표시되지 않는다", async () => {
+    await renderWithData([]);
+
+    expect(screen.queryByLabelText("iOS repo 경로")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("기준 커밋")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Git diff로 갱신" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("프로덕션 환경에서는 Git 자동화 설정 입력과 버튼이 표시되지 않는다", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    await renderWithData([]);
+
+    expect(screen.queryByLabelText("iOS repo 경로")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("기준 커밋")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Git diff로 갱신" })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("MIGRATE-026: 로컬 개발 환경 Git 자동화 설정 입력", () => {
+  it("개발 환경에서는 repo 경로, 기준 커밋, 후보군 추가, Git diff 갱신 UI가 보인다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+
+    await renderWithData([]);
+
+    expect(await screen.findByLabelText("iOS repo 경로")).toBeInTheDocument();
+    expect(screen.getByLabelText("기준 커밋")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "후보군 추가" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Git diff로 갱신" })).toBeInTheDocument();
+  });
+
+  it("repo 경로와 기준 커밋을 입력할 수 있다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    await renderWithData([]);
+
+    const user = userEvent.setup();
+    const repoPathInput = await screen.findByLabelText("iOS repo 경로");
+    const baselineInput = screen.getByLabelText("기준 커밋");
+
+    await user.type(repoPathInput, "/Users/dev/ios-app");
+    await user.type(baselineInput, "abc1234");
+
+    expect(repoPathInput).toHaveValue("/Users/dev/ios-app");
+    expect(baselineInput).toHaveValue("abc1234");
+  });
+});
+
+describe("MIGRATE-027: 후보군 파일 경로 추가", () => {
+  it("후보 파일 경로를 입력하고 후보군 추가를 누르면 후보군 요청이 전송되고 카드가 추가된다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: "candidate-1",
+        name: "HomeViewModel.swift",
+        tags: "",
+        createdAt: new Date().toISOString(),
+        symbols: [
+          {
+            id: "f1",
+            name: "loadData",
+            className: "HomeViewModel",
+            kind: "function",
+            completed: false,
+          },
+        ],
+      }),
+    });
+
+    await renderWithData([]);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("iOS repo 경로"), "/Users/dev/ios-app");
+    await user.type(screen.getByLabelText("기준 커밋"), "abc1234");
+    await user.type(screen.getByLabelText("후보 파일 경로"), "Sources/HomeViewModel.swift");
+    await user.click(screen.getByRole("button", { name: "후보군 추가" }));
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/git/candidates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoPath: "/Users/dev/ios-app",
+        baselineCommit: "abc1234",
+        candidatePath: "Sources/HomeViewModel.swift",
+      }),
+    });
+
+    expect(await screen.findByText("HomeViewModel.swift")).toBeInTheDocument();
+  });
+});
+
+describe("MIGRATE-028: Git diff 자동 갱신 실행", () => {
+  it("Git diff로 갱신을 누르면 sync 요청이 전송되고 요약 배너가 표시된다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        changedFilesCount: 1,
+        matchedCandidatesCount: 1,
+        newlyCompletedSymbolsCount: 1,
+        completedSymbolIds: ["f2"],
+      }),
+    });
+
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+        { id: "f2", name: "refresh", className: "HomeViewModel", completed: false },
+      ]),
+    ]);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("iOS repo 경로"), "/Users/dev/ios-app");
+    await user.type(screen.getByLabelText("기준 커밋"), "abc1234");
+    await user.click(screen.getByRole("button", { name: "Git diff로 갱신" }));
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/git/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoPath: "/Users/dev/ios-app",
+        baselineCommit: "abc1234",
+        candidatePaths: ["HomeViewModel.swift"],
+      }),
+    });
+
+    expect(await screen.findByText("자동 갱신 결과")).toBeInTheDocument();
+    expect(screen.getByText("변경 파일 1개")).toBeInTheDocument();
+    expect(screen.getByText("후보군 매칭 1개")).toBeInTheDocument();
+    expect(screen.getByText("새 완료 항목 1개")).toBeInTheDocument();
+  });
+});
+
+describe("MIGRATE-029: 자동 갱신은 완료 상태를 누적만 반영", () => {
+  it("기존 완료 상태는 유지되고 새로 매칭된 심볼만 추가 완료되어 진행률이 누적된다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        changedFilesCount: 1,
+        matchedCandidatesCount: 1,
+        newlyCompletedSymbolsCount: 1,
+        completedSymbolIds: ["f2"],
+      }),
+    });
+
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: true },
+        { id: "f2", name: "refresh", className: "HomeViewModel", completed: false },
+      ]),
+    ]);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("iOS repo 경로"), "/Users/dev/ios-app");
+    await user.type(screen.getByLabelText("기준 커밋"), "abc1234");
+    await user.click(screen.getByRole("button", { name: "Git diff로 갱신" }));
+
+    await user.click(screen.getByText("HomeViewModel.swift"));
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).toBeChecked();
+    expect((await screen.findAllByText("100%")).length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -338,3 +338,94 @@ scenarios:
           view: "tck"
         expect:
           emptyMessage: "TCK 태그 파일이 없습니다"
+
+  - id: "MIGRATE-025"
+    name: "로컬 개발 전용 Git 자동화 UI 노출"
+    given: "Migration Progress Board를 렌더링하는 환경"
+    when: "배포 환경 또는 테스트 환경에서 대시보드 페이지에 진입한다"
+    then: "Git 자동화 설정 입력과 실행 버튼은 숨겨지거나 비활성화된다"
+    examples:
+      - input:
+          nodeEnv: "test"
+        expect:
+          repoPathInputVisible: false
+          baselineCommitInputVisible: false
+          syncButtonVisible: false
+      - input:
+          nodeEnv: "production"
+        expect:
+          repoPathInputVisible: false
+          baselineCommitInputVisible: false
+          syncButtonVisible: false
+
+  - id: "MIGRATE-026"
+    name: "로컬 개발 환경 Git 자동화 설정 입력"
+    given: "로컬 개발 환경에서 대시보드 페이지에 진입한 상태"
+    when: "iOS repo 경로와 기준 커밋을 입력한다"
+    then: "Git 자동화 설정 필드가 표시되고 입력값이 유지된다"
+    examples:
+      - input:
+          nodeEnv: "development"
+          repoPath: "/Users/dev/ios-app"
+          baselineCommit: "abc1234"
+        expect:
+          repoPathLabel: "iOS repo 경로"
+          baselineCommitLabel: "기준 커밋"
+          addCandidateButton: "후보군 추가"
+          syncButton: "Git diff로 갱신"
+
+  - id: "MIGRATE-027"
+    name: "후보군 파일 경로 추가"
+    given: "로컬 개발 환경에서 iOS repo 경로와 기준 커밋이 입력된 대시보드"
+    when: "후보 파일 경로를 입력하고 '후보군 추가'를 클릭한다"
+    then: "후보군 추가 요청이 전송되고, 응답으로 받은 파일 카드가 대시보드에 표시된다"
+    examples:
+      - input:
+          repoPath: "/Users/dev/ios-app"
+          baselineCommit: "abc1234"
+          candidatePath: "Sources/HomeViewModel.swift"
+        expect:
+          request:
+            path: "/api/git/candidates"
+            method: "POST"
+            body:
+              repoPath: "/Users/dev/ios-app"
+              baselineCommit: "abc1234"
+              candidatePath: "Sources/HomeViewModel.swift"
+          cardTitle: "HomeViewModel.swift"
+
+  - id: "MIGRATE-028"
+    name: "Git diff 자동 갱신 실행"
+    given: "후보군 파일이 등록된 로컬 개발 환경의 대시보드"
+    when: "'Git diff로 갱신' 버튼을 클릭한다"
+    then: "Git diff 갱신 요청이 전송되고, 완료된 항목과 실행 요약이 반영된다"
+    examples:
+      - input:
+          repoPath: "/Users/dev/ios-app"
+          baselineCommit: "abc1234"
+          candidatePaths: ["Sources/HomeViewModel.swift"]
+        expect:
+          request:
+            path: "/api/git/sync"
+            method: "POST"
+            body:
+              repoPath: "/Users/dev/ios-app"
+              baselineCommit: "abc1234"
+              candidatePaths: ["Sources/HomeViewModel.swift"]
+          summaryBannerTitle: "자동 갱신 결과"
+          changedFilesCount: 1
+          matchedCandidatesCount: 1
+          newlyCompletedSymbolsCount: 1
+
+  - id: "MIGRATE-029"
+    name: "자동 갱신은 완료 상태를 누적만 반영"
+    given: "기존에 일부 심볼이 완료된 후보군 파일 카드가 있는 로컬 개발 환경의 대시보드"
+    when: "Git diff 자동 갱신을 실행한다"
+    then: "기존 완료 상태는 유지되고, 새로 매칭된 심볼만 추가 완료된다"
+    examples:
+      - input:
+          existingCompletedSymbols: ["loadData"]
+          newlyCompletedSymbols: ["refresh"]
+        expect:
+          checkedSymbols: ["loadData", "refresh"]
+          progressRate: "100%"
