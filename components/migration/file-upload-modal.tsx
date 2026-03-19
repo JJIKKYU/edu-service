@@ -17,12 +17,36 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { VALID_TAGS, serializeTags, type Tag } from "@/lib/tags";
 
-export function FileUploadModal() {
+interface FileUploadModalProps {
+  initialFiles?: File[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function FileUploadModal({
+  initialFiles,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: FileUploadModalProps = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled
+    ? (v: boolean) => controlledOnOpenChange?.(v)
+    : setInternalOpen;
+
+  const [prevInitialFiles, setPrevInitialFiles] = useState(initialFiles);
+  if (initialFiles !== prevInitialFiles) {
+    setPrevInitialFiles(initialFiles);
+    if (initialFiles && initialFiles.length > 0) {
+      setSelectedFiles(initialFiles);
+    }
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const fileList = e.target.files;
@@ -50,8 +74,12 @@ export function FileUploadModal() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        toast.error(data.error);
+        try {
+          const data = await res.json();
+          toast.error(data.error || "업로드 실패");
+        } catch {
+          toast.error("업로드 실패");
+        }
       }
     }
 
@@ -77,12 +105,14 @@ export function FileUploadModal() {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button>
-          <UploadIcon data-icon="inline-start" />
-          파일 업로드
-        </Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button>
+            <UploadIcon data-icon="inline-start" />
+            파일 업로드
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>파일 업로드</DialogTitle>

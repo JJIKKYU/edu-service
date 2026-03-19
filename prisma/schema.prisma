@@ -12,13 +12,14 @@ model File {
   name      String     @unique
   tags      String     @default("")
   createdAt DateTime   @default(now())
-  functions Function[]
+  symbols   Symbol[]
 }
 
-model Function {
+model Symbol {
   id        String  @id @default(cuid())
   name      String
   className String
+  kind      String
   completed Boolean @default(false)
   file      File    @relation(fields: [fileId], references: [id])
   fileId    String

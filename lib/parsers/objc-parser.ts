@@ -1,19 +1,53 @@
-import type { ParseResult } from "./swift-parser";
+import type { ParseResult, ParsedSymbol } from "./types";
 
 // Hoisted RegExp (js-hoist-regexp)
 const OBJC_INTERFACE_OR_PROTOCOL_RE =
   /@(?:interface|protocol)\s+(\w+)[\s\S]*?@end/g;
 const OBJC_METHOD_RE =
   /[-+]\s*\([^)]*\)\s*(\w+)/g;
+const OBJC_PROPERTY_RE =
+  /@property\s*\([^)]*\)\s*[^;]*?\b(\w+)\s*;/g;
+const OBJC_TYPED_ENUM_RE =
+  /typedef\s+NS_ENUM\s*\([^,]+,\s*(\w+)\s*\)/g;
+const OBJC_ENUM_RE = /enum\s+(\w+)/g;
 
-function extractMethods(body: string): string[] {
-  const methods: string[] = [];
+function uniqueSymbols(symbols: ParsedSymbol[]): ParsedSymbol[] {
+  const seen = new Set<string>();
+  return symbols.filter((symbol) => {
+    const key = `${symbol.kind}:${symbol.name}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function extractSymbols(body: string): ParsedSymbol[] {
+  const symbols: ParsedSymbol[] = [];
   let match: RegExpExecArray | null;
+
   OBJC_METHOD_RE.lastIndex = 0;
   while ((match = OBJC_METHOD_RE.exec(body)) !== null) {
-    methods.push(match[1]);
+    symbols.push({ name: match[1], kind: "function" });
   }
-  return methods;
+
+  OBJC_PROPERTY_RE.lastIndex = 0;
+  while ((match = OBJC_PROPERTY_RE.exec(body)) !== null) {
+    symbols.push({ name: match[1], kind: "variable" });
+  }
+
+  OBJC_TYPED_ENUM_RE.lastIndex = 0;
+  while ((match = OBJC_TYPED_ENUM_RE.exec(body)) !== null) {
+    symbols.push({ name: match[1], kind: "variable" });
+  }
+
+  OBJC_ENUM_RE.lastIndex = 0;
+  while ((match = OBJC_ENUM_RE.exec(body)) !== null) {
+    if (match[1]) {
+      symbols.push({ name: match[1], kind: "variable" });
+    }
+  }
+
+  return uniqueSymbols(symbols);
 }
 
 export function parseObjC(source: string): ParseResult {
@@ -28,7 +62,7 @@ export function parseObjC(source: string): ParseResult {
   ) {
     const className = classMatch[1];
     const body = classMatch[0];
-    const functions = extractMethods(body);
+    const symbols = extractSymbols(body);
 
     // Mark range as consumed
     for (
@@ -39,21 +73,17 @@ export function parseObjC(source: string): ParseResult {
       consumed.add(i);
     }
 
-    groups.push({ className, functions });
+    groups.push({ className, symbols });
   }
 
-  // Collect global methods (not inside any @interface/@protocol)
-  const globalFunctions: string[] = [];
-  OBJC_METHOD_RE.lastIndex = 0;
-  let methodMatch: RegExpExecArray | null;
-  while ((methodMatch = OBJC_METHOD_RE.exec(source)) !== null) {
-    if (!consumed.has(methodMatch.index)) {
-      globalFunctions.push(methodMatch[1]);
-    }
-  }
+  // Collect global symbols (not inside any @interface/@protocol)
+  const globalSource = [...source]
+    .map((char, index) => (consumed.has(index) ? " " : char))
+    .join("");
+  const globalSymbols = extractSymbols(globalSource);
 
-  if (globalFunctions.length > 0) {
-    groups.push({ className: "Global", functions: globalFunctions });
+  if (globalSymbols.length > 0) {
+    groups.push({ className: "Global", symbols: globalSymbols });
   }
 
   return { groups };

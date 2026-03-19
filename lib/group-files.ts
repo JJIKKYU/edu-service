@@ -1,24 +1,18 @@
 import { parseTags } from "./tags";
-
-interface FunctionItem {
-  id: string;
-  name: string;
-  className: string;
-  completed: boolean;
-}
+import type { SymbolItem } from "./symbols";
 
 interface FileRecord {
   id: string;
   name: string;
   tags?: string;
-  functions: FunctionItem[];
+  symbols: SymbolItem[];
 }
 
 export interface FileGroup {
   key: string;
   displayName: string;
   files: Array<{ id: string; name: string }>;
-  functions: FunctionItem[];
+  symbols: SymbolItem[];
   tags: string[];
 }
 
@@ -34,12 +28,12 @@ function getBaseName(filename: string): string {
   return dotIndex === -1 ? filename : filename.slice(0, dotIndex);
 }
 
-function deduplicateFunctions(functions: FunctionItem[]): FunctionItem[] {
-  const seen = new Map<string, FunctionItem>();
-  for (const fn of functions) {
-    const key = `${fn.className}:${fn.name}`;
+function deduplicateSymbols(symbols: SymbolItem[]): SymbolItem[] {
+  const seen = new Map<string, SymbolItem>();
+  for (const symbol of symbols) {
+    const key = `${symbol.className}:${symbol.kind}:${symbol.name}`;
     // Later entries (from .m) overwrite earlier (.h) entries
-    seen.set(key, fn);
+    seen.set(key, symbol);
   }
   return Array.from(seen.values());
 }
@@ -83,9 +77,9 @@ export function groupFiles(files: FileRecord[]): FileGroup[] {
 
     if (existing) {
       existing.files.push({ id: file.id, name: file.name });
-      existing.functions = deduplicateFunctions([
-        ...existing.functions,
-        ...file.functions,
+      existing.symbols = deduplicateSymbols([
+        ...existing.symbols,
+        ...file.symbols,
       ]);
       existing.tags = [...new Set([...existing.tags, ...fileTags])];
     } else {
@@ -93,7 +87,7 @@ export function groupFiles(files: FileRecord[]): FileGroup[] {
         key,
         displayName,
         files: [{ id: file.id, name: file.name }],
-        functions: [...file.functions],
+        symbols: [...file.symbols],
         tags: [...fileTags],
       });
     }

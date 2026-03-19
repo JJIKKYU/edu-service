@@ -4,53 +4,75 @@ import type { ParseResult } from "@/lib/parsers";
 
 describe("parseFile", () => {
   describe("Swift parser", () => {
-    it("extracts class name and functions from a Swift class", () => {
-      const input = `class HomeViewModel { func loadData() {} func refresh() {} }`;
+    it("extracts class symbols from a Swift class", () => {
+      const input = `
+        class HomeViewModel {
+          let title = ""
+          var count = 0
+          enum State { case idle }
+          func loadData() {}
+          func refresh() {}
+        }
+      `;
       const result = parseFile("HomeViewModel.swift", input);
 
       expect(result).toEqual<ParseResult>({
         groups: [
           {
             className: "HomeViewModel",
-            functions: ["loadData", "refresh"],
+            symbols: [
+              { name: "loadData", kind: "function" },
+              { name: "refresh", kind: "function" },
+              { name: "title", kind: "variable" },
+              { name: "count", kind: "variable" },
+              { name: "State", kind: "variable" },
+            ],
           },
         ],
       });
     });
 
-    it("extracts protocol name and functions", () => {
+    it("extracts protocol functions", () => {
       const input = `protocol DataSource { func numberOfItems() -> Int func itemAt(index: Int) -> String }`;
       const result = parseFile("DataSource.swift", input);
 
       expect(result.groups[0].className).toBe("DataSource");
-      expect(result.groups[0].functions).toEqual([
-        "numberOfItems",
-        "itemAt",
+      expect(result.groups[0].symbols).toEqual([
+        { name: "numberOfItems", kind: "function" },
+        { name: "itemAt", kind: "function" },
       ]);
     });
 
     it("handles multiple classes in one file", () => {
-      const input = `class Foo { func a() {} } class Bar { func b() {} }`;
+      const input = `class Foo { func a() {} } class Bar { let value = 1 func b() {} }`;
       const result = parseFile("multi.swift", input);
 
       expect(result.groups).toHaveLength(2);
       expect(result.groups[0]).toEqual({
         className: "Foo",
-        functions: ["a"],
+        symbols: [{ name: "a", kind: "function" }],
       });
       expect(result.groups[1]).toEqual({
         className: "Bar",
-        functions: ["b"],
+        symbols: [
+          { name: "b", kind: "function" },
+          { name: "value", kind: "variable" },
+        ],
       });
     });
 
-    it("groups global functions under Global", () => {
-      const input = `func helperA() {} class Foo { func a() {} } func helperB() {}`;
+    it("groups global symbols under Global", () => {
+      const input = `let apiKey = ""\nfunc helperA() {}\nclass Foo { func a() {} }\nenum AppMode { case prod }\nfunc helperB() {}`;
       const result = parseFile("file.swift", input);
 
       const globalGroup = result.groups.find((g) => g.className === "Global");
       expect(globalGroup).toBeDefined();
-      expect(globalGroup!.functions).toEqual(["helperA", "helperB"]);
+      expect(globalGroup!.symbols).toEqual([
+        { name: "helperA", kind: "function" },
+        { name: "helperB", kind: "function" },
+        { name: "apiKey", kind: "variable" },
+        { name: "AppMode", kind: "variable" },
+      ]);
     });
 
     it("returns empty groups for empty Swift file", () => {
@@ -60,64 +82,75 @@ describe("parseFile", () => {
   });
 
   describe("ObjC parser", () => {
-    it("extracts interface name and methods from .m file", () => {
-      const input = `@interface NetworkManager\n- (void)fetchData {}\n- (void)cancelRequest {}\n@end`;
+    it("extracts interface symbols from .m file", () => {
+      const input = `
+        @interface NetworkManager
+        @property (nonatomic, strong) NSString *token;
+        - (void)fetchData {}
+        - (void)cancelRequest {}
+        @end
+      `;
       const result = parseFile("NetworkManager.m", input);
 
       expect(result).toEqual<ParseResult>({
         groups: [
           {
             className: "NetworkManager",
-            functions: ["fetchData", "cancelRequest"],
+            symbols: [
+              { name: "fetchData", kind: "function" },
+              { name: "cancelRequest", kind: "function" },
+              { name: "token", kind: "variable" },
+            ],
           },
         ],
       });
     });
 
-    it("extracts interface name and methods from .h file with semicolons", () => {
-      const input = `@interface NetworkManager\n- (void)fetchData;\n- (void)cancelRequest;\n@end`;
-      const result = parseFile("NetworkManager.h", input);
-
-      expect(result).toEqual<ParseResult>({
-        groups: [
-          {
-            className: "NetworkManager",
-            functions: ["fetchData", "cancelRequest"],
-          },
-        ],
-      });
-    });
-
-    it("extracts ObjC protocol", () => {
+    it("extracts ObjC protocol functions", () => {
       const input = `@protocol MyDelegate\n- (void)didFinish;\n+ (void)create;\n@end`;
       const result = parseFile("MyDelegate.h", input);
 
       expect(result.groups[0].className).toBe("MyDelegate");
-      expect(result.groups[0].functions).toEqual(["didFinish", "create"]);
+      expect(result.groups[0].symbols).toEqual([
+        { name: "didFinish", kind: "function" },
+        { name: "create", kind: "function" },
+      ]);
     });
 
     it("handles multiple interfaces in one file", () => {
-      const input = `@interface A\n- (void)foo;\n@end\n@interface B\n- (void)bar;\n@end`;
+      const input = `@interface A\n- (void)foo;\n@end\n@interface B\n@property (nonatomic) NSInteger count;\n- (void)bar;\n@end`;
       const result = parseFile("multi.m", input);
 
       expect(result.groups).toHaveLength(2);
       expect(result.groups[0]).toEqual({
         className: "A",
-        functions: ["foo"],
+        symbols: [{ name: "foo", kind: "function" }],
       });
       expect(result.groups[1]).toEqual({
         className: "B",
-        functions: ["bar"],
+        symbols: [
+          { name: "bar", kind: "function" },
+          { name: "count", kind: "variable" },
+        ],
       });
     });
 
-    it("groups global ObjC methods under Global", () => {
-      const input = `- (void)globalMethod {}\n@interface Foo\n- (void)bar;\n@end`;
+    it("groups global ObjC symbols under Global", () => {
+      const input = `
+        typedef NS_ENUM(NSInteger, AppMode) { AppModeA };
+        - (void)globalMethod {}
+        @interface Foo
+        - (void)bar;
+        @end
+      `;
       const result = parseFile("file.m", input);
 
       const globalGroup = result.groups.find((g) => g.className === "Global");
       expect(globalGroup).toBeDefined();
-      expect(globalGroup!.functions).toEqual(["globalMethod"]);
+      expect(globalGroup!.symbols).toEqual([
+        { name: "globalMethod", kind: "function" },
+        { name: "AppMode", kind: "variable" },
+      ]);
     });
   });
 

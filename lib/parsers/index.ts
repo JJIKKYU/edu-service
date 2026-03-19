@@ -1,6 +1,6 @@
 import { parseSwift } from "./swift-parser";
 import { parseObjC } from "./objc-parser";
-import type { ParseResult } from "./swift-parser";
+import type { ParseResult } from "./types";
 
 export type { ParseResult };
 
