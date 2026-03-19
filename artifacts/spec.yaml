@@ -1,0 +1,163 @@
+version: 1
+
+scenarios:
+  - id: "MIGRATE-001"
+    name: "빈 상태 안내"
+    given: "등록된 파일이 없는 대시보드"
+    when: "대시보드 페이지에 진입한다"
+    then: "'등록된 파일이 없습니다' 안내 문구, '파일 업로드' 버튼, 요약 영역에 파일 수 0·함수 수 0·완료율 0%가 표시된다"
+    examples:
+      - input: { registeredFiles: 0 }
+        expect:
+          emptyMessage: "등록된 파일이 없습니다"
+          uploadButton: true
+          fileCount: 0
+          functionCount: 0
+          completionRate: "0%"
+
+  - id: "MIGRATE-002"
+    name: "Swift 파일 업로드 및 파싱"
+    given: "등록된 파일이 없는 대시보드"
+    when: "'파일 업로드' 버튼으로 .swift 파일을 업로드한다"
+    then: "파일 카드에 파일명과 함수 수가 표시되고, 진행률 0%, 대시보드 요약이 갱신된다"
+    examples:
+      - input:
+          fileName: "HomeViewModel.swift"
+          fileContent: "class HomeViewModel {\n  func loadData() {}\n  func refresh() {}\n}"
+        expect:
+          cardTitle: "HomeViewModel.swift"
+          functionCount: 2
+          progressRate: "0%"
+          dashboardFileCount: 1
+          dashboardFunctionCount: 2
+          dashboardCompletionRate: "0%"
+
+  - id: "MIGRATE-003"
+    name: "ObjC 파일 업로드 및 파싱"
+    given: "등록된 파일이 없는 대시보드"
+    when: "'파일 업로드' 버튼으로 .m 파일을 업로드한다"
+    then: "파일 카드에 파일명과 함수 수가 표시되고, 진행률 0%, 대시보드 요약이 갱신된다"
+    examples:
+      - input:
+          fileName: "NetworkManager.m"
+          fileContent: "@interface NetworkManager\n- (void)fetchData {}\n- (void)cancelRequest {}\n@end"
+        expect:
+          cardTitle: "NetworkManager.m"
+          functionCount: 2
+          progressRate: "0%"
+          dashboardFileCount: 1
+          dashboardFunctionCount: 2
+          dashboardCompletionRate: "0%"
+
+  - id: "MIGRATE-004"
+    name: "파일 카드 확장하여 함수 목록 확인"
+    given: "'HomeViewModel.swift' 파일 카드가 접힌 상태의 대시보드"
+    when: "'HomeViewModel.swift' 카드를 클릭한다"
+    then: "카드가 확장되어 클래스별로 그룹화된 함수 목록과 체크박스가 표시된다"
+    examples:
+      - input: { cardTitle: "HomeViewModel.swift" }
+        expect:
+          expanded: true
+          groupName: "HomeViewModel"
+          functions: ["loadData", "refresh"]
+          checkboxCount: 2
+          checkedCount: 0
+
+  - id: "MIGRATE-005"
+    name: "함수 TCK 전환 완료 체크"
+    given: "'HomeViewModel.swift' 카드가 확장된 상태 (함수 2개, 모두 미완료)"
+    when: "'loadData' 함수의 체크박스를 클릭한다"
+    then: "파일 진행률이 50%로 갱신되고, 대시보드 완료율이 갱신된다"
+    examples:
+      - input: { targetFunction: "loadData" }
+        expect:
+          checkedFunctions: ["loadData"]
+          progressRate: "50%"
+          dashboardCompletionRate: "50%"
+      - input: { targetFunction: "loadData", currentState: "checked" }
+        expect:
+          checkedFunctions: []
+          progressRate: "0%"
+          dashboardCompletionRate: "0%"
+
+  - id: "MIGRATE-006"
+    name: "대시보드 집계 요약"
+    given: "파일 2개 등록 (함수 2개 + 함수 3개 = 총 5개), 완료 2개인 대시보드"
+    when: "대시보드 요약 영역을 확인한다"
+    then: "파일 수 2, 함수 수 5, 완료율 40%가 표시된다"
+    examples:
+      - input:
+          files:
+            - name: "FileA.swift"
+              totalFunctions: 2
+              completedFunctions: 1
+            - name: "FileB.swift"
+              totalFunctions: 3
+              completedFunctions: 1
+        expect:
+          fileCount: 2
+          functionCount: 5
+          completionRate: "40%"
+
+  - id: "MIGRATE-007"
+    name: "중복 파일 업로드 거부"
+    given: "'HomeViewModel.swift'가 등록된 대시보드"
+    when: "같은 이름의 'HomeViewModel.swift' 파일을 업로드한다"
+    then: "'이미 등록된 파일입니다' 메시지가 표시되고 업로드가 거부된다"
+    examples:
+      - input: { fileName: "HomeViewModel.swift" }
+        expect:
+          errorMessage: "이미 등록된 파일입니다"
+          fileCount: 1
+
+  - id: "MIGRATE-008"
+    name: "지원하지 않는 파일 형식 업로드 거부"
+    given: "대시보드에서 파일 업로드를 시도하는 상태"
+    when: ".swift/.m/.h가 아닌 파일(예: 'utils.py')을 업로드한다"
+    then: "'지원하지 않는 파일 형식입니다' 메시지가 표시되고 업로드가 거부된다"
+    examples:
+      - input: { fileName: "utils.py" }
+        expect:
+          errorMessage: "지원하지 않는 파일 형식입니다"
+          fileCount: 0
+
+  - id: "MIGRATE-009"
+    name: "파일 카드 접기 (토글)"
+    given: "'HomeViewModel.swift' 파일 카드가 확장된 상태의 대시보드"
+    when: "'HomeViewModel.swift' 카드를 다시 클릭한다"
+    then: "카드가 접혀 함수 목록이 숨겨진다"
+    examples:
+      - input: { cardTitle: "HomeViewModel.swift", currentState: "expanded" }
+        expect:
+          expanded: false
+          functionListVisible: false
+
+  - id: "MIGRATE-010"
+    name: "ObjC 헤더(.h) 파일 업로드 및 파싱"
+    given: "등록된 파일이 없는 대시보드"
+    when: "'파일 업로드' 버튼으로 .h 파일을 업로드한다"
+    then: "파일 카드에 파일명과 함수 수가 표시되고, 진행률 0%, 대시보드 요약이 갱신된다"
+    examples:
+      - input:
+          fileName: "NetworkManager.h"
+          fileContent: "@interface NetworkManager\n- (void)fetchData;\n- (void)cancelRequest;\n@end"
+        expect:
+          cardTitle: "NetworkManager.h"
+          functionCount: 2
+          progressRate: "0%"
+          dashboardFileCount: 1
+          dashboardFunctionCount: 2
+          dashboardCompletionRate: "0%"
+
+  - id: "MIGRATE-011"
+    name: "파일 내 모든 함수 체크 완료"
+    given: "'HomeViewModel.swift' 카드가 확장된 상태 (함수 2개, 모두 미완료)"
+    when: "'loadData'와 'refresh' 함수의 체크박스를 모두 클릭한다"
+    then: "파일 진행률이 100%로 갱신되고, 대시보드 완료율이 100%로 갱신된다"
+    examples:
+      - input:
+          checkedFunctions: ["loadData", "refresh"]
+          totalFunctions: 2
+        expect:
+          progressRate: "100%"
+          dashboardCompletionRate: "100%"
