@@ -343,20 +343,22 @@ scenarios:
     name: "로컬 개발 전용 Git 자동화 UI 노출"
     given: "Migration Progress Board를 렌더링하는 환경"
     when: "배포 환경 또는 테스트 환경에서 대시보드 페이지에 진입한다"
-    then: "Git 자동화 설정 입력과 실행 버튼은 숨겨지거나 비활성화된다"
+    then: "Git 자동화 설정 입력과 실행 버튼은 표시되지만 비활성화되고 안내 문구가 표시된다"
     examples:
       - input:
           nodeEnv: "test"
         expect:
-          repoPathInputVisible: false
-          baselineCommitInputVisible: false
-          syncButtonVisible: false
+          repoPathInputVisible: true
+          baselineCommitInputVisible: true
+          syncButtonVisible: true
+          syncButtonDisabled: true
       - input:
           nodeEnv: "production"
         expect:
-          repoPathInputVisible: false
-          baselineCommitInputVisible: false
-          syncButtonVisible: false
+          repoPathInputVisible: true
+          baselineCommitInputVisible: true
+          syncButtonVisible: true
+          syncButtonDisabled: true
 
   - id: "MIGRATE-026"
     name: "로컬 개발 환경 Git 자동화 설정 입력"

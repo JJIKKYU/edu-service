@@ -64,8 +64,8 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function isGitAutomationVisible() {
-  return process.env.NODE_ENV === "development";
+function canRunGitAutomation() {
+  return process.env.NODE_ENV === "development" && !process.env.NEXT_PUBLIC_VERCEL;
 }
 
 async function readJsonOrThrow<T>(response: Response): Promise<T> {
@@ -107,7 +107,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
   const groups = useMemo(() => groupFiles(files), [files]);
   const filteredGroups = filterGroupsByView(groups, view);
   const summary = countSummary(filteredGroups);
-  const gitAutomationVisible = isGitAutomationVisible();
+  const gitAutomationEnabled = canRunGitAutomation();
 
   function updateFiles(updater: (currentFiles: StoredFileRecord[]) => StoredFileRecord[]) {
     setBoardState((currentState) => {
@@ -362,7 +362,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
           completedCount={summary.completedCount}
         />
 
-        {gitAutomationVisible && boardState ? (
+        {boardState ? (
           <Card className="mt-6">
             <CardHeader className="gap-2">
               <CardTitle className="flex items-center gap-2 text-sm">
@@ -371,6 +371,11 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {!gitAutomationEnabled ? (
+                <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  배포 환경에서는 로컬 iOS 저장소와 Git에 접근할 수 없어 자동화 실행은 비활성화됩니다.
+                </div>
+              ) : null}
               <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
                 <label className="space-y-1 text-sm">
                   <span>iOS repo 경로</span>
@@ -379,6 +384,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
                     value={boardState.repoPath}
                     onChange={(event) => updateSettings({ repoPath: event.target.value })}
                     placeholder="/Users/you/project/ios"
+                    disabled={!gitAutomationEnabled}
                   />
                 </label>
                 <label className="space-y-1 text-sm">
@@ -390,6 +396,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
                       updateSettings({ baselineCommit: event.target.value })
                     }
                     placeholder="abc1234"
+                    disabled={!gitAutomationEnabled}
                   />
                 </label>
                 <div className="flex items-end">
@@ -399,7 +406,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
                     onClick={() => {
                       void handleLoadHeadCommit();
                     }}
-                    disabled={isLoadingHead}
+                    disabled={!gitAutomationEnabled || isLoadingHead}
                   >
                     <RefreshCwIcon data-icon="inline-start" className="size-4" />
                     HEAD 저장
@@ -415,6 +422,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
                     value={candidatePath}
                     onChange={(event) => setCandidatePath(event.target.value)}
                     placeholder="Sources/HomeViewModel.swift"
+                    disabled={!gitAutomationEnabled}
                   />
                 </label>
                 <div className="flex items-end">
@@ -424,7 +432,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
                     onClick={() => {
                       void handleAddCandidate();
                     }}
-                    disabled={isAddingCandidate}
+                    disabled={!gitAutomationEnabled || isAddingCandidate}
                   >
                     후보군 추가
                   </Button>
@@ -435,7 +443,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
                     onClick={() => {
                       void handleSync();
                     }}
-                    disabled={isSyncing}
+                    disabled={!gitAutomationEnabled || isSyncing}
                   >
                     Git diff로 갱신
                   </Button>

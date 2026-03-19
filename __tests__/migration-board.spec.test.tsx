@@ -614,26 +614,25 @@ describe("MIGRATE-024: 태그별 뷰 빈 상태", () => {
 });
 
 describe("MIGRATE-025: 로컬 개발 전용 Git 자동화 UI 노출", () => {
-  it("테스트 환경에서는 Git 자동화 설정 입력과 버튼이 표시되지 않는다", async () => {
+  it("테스트 환경에서는 Git 자동화 설정 입력과 버튼이 보이지만 비활성화된다", async () => {
     await renderWithData([]);
 
-    expect(screen.queryByLabelText("iOS repo 경로")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("기준 커밋")).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("iOS repo 경로")).toBeDisabled();
+    expect(screen.getByLabelText("기준 커밋")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Git diff로 갱신" })).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: "Git diff로 갱신" })
-    ).not.toBeInTheDocument();
+      screen.getByText("배포 환경에서는 로컬 iOS 저장소와 Git에 접근할 수 없어 자동화 실행은 비활성화됩니다.")
+    ).toBeInTheDocument();
   });
 
-  it("프로덕션 환경에서는 Git 자동화 설정 입력과 버튼이 표시되지 않는다", async () => {
+  it("프로덕션 환경에서는 Git 자동화 설정 입력과 버튼이 보이지만 비활성화된다", async () => {
     vi.stubEnv("NODE_ENV", "production");
 
     await renderWithData([]);
 
-    expect(screen.queryByLabelText("iOS repo 경로")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("기준 커밋")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Git diff로 갱신" })
-    ).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("iOS repo 경로")).toBeDisabled();
+    expect(screen.getByLabelText("기준 커밋")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Git diff로 갱신" })).toBeDisabled();
   });
 });
 
