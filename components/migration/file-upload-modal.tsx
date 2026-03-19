@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { UploadIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -13,23 +13,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { VALID_TAGS, serializeTags, type Tag } from "@/lib/tags";
+import { VALID_TAGS, type Tag } from "@/lib/tags";
+import { cn } from "@/lib/utils";
 
 interface FileUploadModalProps {
   initialFiles?: File[];
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onUpload?: (files: File[], tags: Tag[]) => Promise<void> | void;
 }
 
 export function FileUploadModal({
   initialFiles,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onUpload,
 }: FileUploadModalProps = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
@@ -61,29 +62,13 @@ export function FileUploadModal({
   }
 
   async function handleConfirm() {
-    const tags = serializeTags(selectedTags);
-
-    for (const file of selectedFiles) {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("tags", tags);
-
-      const res = await fetch("/api/files", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        try {
-          const data = await res.json();
-          toast.error(data.error || "업로드 실패");
-        } catch {
-          toast.error("업로드 실패");
-        }
-      }
+    try {
+      await onUpload?.(selectedFiles, selectedTags);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "업로드 실패");
+      return;
     }
 
-    router.refresh();
     setOpen(false);
     setSelectedFiles([]);
     setSelectedTags([]);
@@ -142,19 +127,35 @@ export function FileUploadModal({
 
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">태그</p>
-            <div className="flex gap-4">
-              {VALID_TAGS.map((tag) => (
-                <div key={tag} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`tag-${tag}`}
-                    checked={selectedTags.includes(tag)}
-                    onCheckedChange={(checked) =>
-                      handleTagToggle(tag, checked === true)
-                    }
-                  />
-                  <Label htmlFor={`tag-${tag}`}>{tag}</Label>
-                </div>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              {VALID_TAGS.map((tag) => {
+                const selected = selectedTags.includes(tag);
+
+                return (
+                  <div key={tag}>
+                    <input
+                      id={`tag-${tag}`}
+                      type="checkbox"
+                      className="sr-only"
+                      checked={selected}
+                      onChange={(event) =>
+                        handleTagToggle(tag, event.target.checked)
+                      }
+                    />
+                    <Badge asChild variant={selected ? "default" : "outline"}>
+                      <Label
+                        htmlFor={`tag-${tag}`}
+                        className={cn(
+                          "cursor-pointer px-3 py-1.5 text-sm transition-colors",
+                          selected && "shadow-sm"
+                        )}
+                      >
+                        {tag}
+                      </Label>
+                    </Badge>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

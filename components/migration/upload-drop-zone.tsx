@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useState } from "react";
 import { UploadIcon } from "lucide-react";
 import { FileUploadModal } from "./file-upload-modal";
+import type { Tag } from "@/lib/tags";
 
 const UploadDropZoneContext = createContext<{ openModal: () => void }>({
   openModal: () => {},
@@ -12,7 +13,13 @@ export function useUploadDropZone() {
   return useContext(UploadDropZoneContext);
 }
 
-export function UploadDropZone({ children }: { children: React.ReactNode }) {
+export function UploadDropZone({
+  children,
+  onUpload,
+}: {
+  children: React.ReactNode;
+  onUpload: (files: File[], tags: Tag[]) => Promise<void> | void;
+}) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
@@ -85,6 +92,7 @@ export function UploadDropZone({ children }: { children: React.ReactNode }) {
           open={modalOpen}
           onOpenChange={handleOpenChange}
           initialFiles={droppedFiles}
+          onUpload={onUpload}
         />
       </div>
     </UploadDropZoneContext.Provider>

@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import {
   FileCodeIcon,
   XIcon,
@@ -36,6 +34,9 @@ interface FileCardProps {
   files: Array<{ id: string; name: string }>;
   symbols: SymbolItem[];
   tags: string[];
+  onDeleteFiles: (fileIds: string[]) => void;
+  onToggleSymbol: (symbolId: string) => void;
+  onUpdateTags: (fileIds: string[], tags: Tag[]) => void;
 }
 
 function getExtension(filename: string): string {
@@ -43,8 +44,15 @@ function getExtension(filename: string): string {
   return dotIndex === -1 ? "" : filename.slice(dotIndex);
 }
 
-export function FileCard({ displayName, files, symbols, tags }: FileCardProps) {
-  const router = useRouter();
+export function FileCard({
+  displayName,
+  files,
+  symbols,
+  tags,
+  onDeleteFiles,
+  onToggleSymbol,
+  onUpdateTags,
+}: FileCardProps) {
   const [activeTags, setActiveTags] = useState<string[]>(tags);
   const [isSavingTags, setIsSavingTags] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -76,62 +84,18 @@ export function FileCard({ displayName, files, symbols, tags }: FileCardProps) {
       : [...activeTags, tag];
 
     setIsSavingTags(true);
-
-    try {
-      const response = await fetch("/api/files/tags", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileIds,
-          tags: nextTags,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
-        throw new Error(data?.error || "태그 수정 실패");
-      }
-
-      setActiveTags(nextTags.sort());
-      router.refresh();
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "태그 수정 실패"
-      );
-    } finally {
-      setIsSavingTags(false);
-    }
+    const sortedTags = [...nextTags].sort() as Tag[];
+    setActiveTags(sortedTags);
+    onUpdateTags(fileIds, sortedTags);
+    setIsSavingTags(false);
   }
 
   async function handleDelete() {
     if (isDeleting) return;
 
     setIsDeleting(true);
-
-    try {
-      const response = await fetch("/api/files", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileIds }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
-        throw new Error(data?.error || "파일 삭제 실패");
-      }
-
-      router.refresh();
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "파일 삭제 실패"
-      );
-    } finally {
-      setIsDeleting(false);
-    }
+    onDeleteFiles(fileIds);
+    setIsDeleting(false);
   }
 
   return (
@@ -235,7 +199,7 @@ export function FileCard({ displayName, files, symbols, tags }: FileCardProps) {
       </div>
       <CollapsibleContent>
         <div className="border-t">
-          <FunctionList symbols={symbols} />
+          <FunctionList symbols={symbols} onToggleSymbol={onToggleSymbol} />
         </div>
       </CollapsibleContent>
     </Collapsible>

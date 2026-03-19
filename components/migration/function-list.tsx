@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -8,21 +7,15 @@ import type { SymbolItem } from "@/lib/symbols";
 
 interface FunctionListProps {
   symbols: SymbolItem[];
+  onToggleSymbol: (symbolId: string) => void;
 }
 
-export function FunctionList({ symbols }: FunctionListProps) {
-  const router = useRouter();
-
+export function FunctionList({ symbols, onToggleSymbol }: FunctionListProps) {
   const groups = new Map<string, SymbolItem[]>();
   for (const symbol of symbols) {
     const group = groups.get(symbol.className) || [];
     group.push(symbol);
     groups.set(symbol.className, group);
-  }
-
-  async function handleToggle(id: string) {
-    await fetch(`/api/symbols/${id}`, { method: "PATCH" });
-    router.refresh();
   }
 
   return (
@@ -37,7 +30,7 @@ export function FunctionList({ symbols }: FunctionListProps) {
               <label key={symbol.id} className="flex items-center gap-2">
                 <Checkbox
                   checked={symbol.completed}
-                  onCheckedChange={() => handleToggle(symbol.id)}
+                  onCheckedChange={() => onToggleSymbol(symbol.id)}
                 />
                 <span
                   className={cn(
