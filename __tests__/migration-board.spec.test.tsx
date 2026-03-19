@@ -74,6 +74,17 @@ async function renderWithData(files: FileData[]) {
   render(Page);
 }
 
+async function renderWithDataAndView(
+  files: FileData[],
+  view?: string
+) {
+  mockPrisma.file.findMany.mockResolvedValue(files);
+  const Page = await MigrationPage({
+    searchParams: Promise.resolve(view ? { view } : {}),
+  });
+  render(Page);
+}
+
 function makeFile(
   id: string,
   name: string,
@@ -703,5 +714,103 @@ describe("MIGRATE-020: 파일 삭제 취소", () => {
 
     expect(mockFetch).not.toHaveBeenCalled();
     expect(screen.getByText("HomeViewModel.swift")).toBeInTheDocument();
+  });
+});
+
+// MIGRATE-021: 대시보드 뷰 전환 옵션 표시
+describe("MIGRATE-021: 대시보드 뷰 전환 옵션 표시", () => {
+  it("'전체', 'TCK', 'CMP' 옵션이 표시되고 기본은 전체다", async () => {
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+      ], "TCK"),
+      makeFile("2", "NetworkManager.swift", [
+        { id: "f2", name: "fetchData", className: "NetworkManager", completed: false },
+      ], "CMP"),
+    ]);
+
+    expect(screen.getByRole("link", { name: "전체" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "TCK" })).toHaveAttribute("href", "/migration?view=tck");
+    expect(screen.getByRole("link", { name: "CMP" })).toHaveAttribute("href", "/migration?view=cmp");
+    expect(screen.getByText("전체 파일")).toBeInTheDocument();
+  });
+});
+
+// MIGRATE-022: TCK 뷰로 요약과 목록 필터
+describe("MIGRATE-022: TCK 뷰로 요약과 목록 필터", () => {
+  it("TCK 태그가 있는 카드와 집계만 표시된다", async () => {
+    await renderWithDataAndView([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: true },
+      ], "TCK"),
+      makeFile("2", "NetworkManager.swift", [
+        { id: "f2", name: "fetchData", className: "NetworkManager", completed: false },
+      ], "CMP"),
+      makeFile("3", "SharedManager.swift", [
+        { id: "f3", name: "bridge", className: "SharedManager", completed: false },
+      ], "CMP,TCK"),
+      makeFile("4", "LegacyBridge.swift", [
+        { id: "f4", name: "legacy", className: "LegacyBridge", completed: false },
+      ]),
+    ], "tck");
+
+    expect(screen.getByText("TCK 파일")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("1 / 2 완료")).toBeInTheDocument();
+    expect(screen.getByText("HomeViewModel.swift")).toBeInTheDocument();
+    expect(screen.getByText("SharedManager.swift")).toBeInTheDocument();
+    expect(screen.queryByText("NetworkManager.swift")).not.toBeInTheDocument();
+    expect(screen.queryByText("LegacyBridge.swift")).not.toBeInTheDocument();
+  });
+});
+
+// MIGRATE-023: CMP 뷰로 요약과 목록 필터
+describe("MIGRATE-023: CMP 뷰로 요약과 목록 필터", () => {
+  it("CMP 태그가 있는 카드와 집계만 표시된다", async () => {
+    await renderWithDataAndView([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+      ], "TCK"),
+      makeFile("2", "NetworkManager.swift", [
+        { id: "f2", name: "fetchData", className: "NetworkManager", completed: true },
+      ], "CMP"),
+      makeFile("3", "SharedManager.swift", [
+        { id: "f3", name: "bridge", className: "SharedManager", completed: false },
+      ], "CMP,TCK"),
+      makeFile("4", "LegacyBridge.swift", [
+        { id: "f4", name: "legacy", className: "LegacyBridge", completed: false },
+      ]),
+    ], "cmp");
+
+    expect(screen.getByText("CMP 파일")).toBeInTheDocument();
+    expect(screen.getByText("NetworkManager.swift")).toBeInTheDocument();
+    expect(screen.getByText("SharedManager.swift")).toBeInTheDocument();
+    expect(screen.queryByText("HomeViewModel.swift")).not.toBeInTheDocument();
+    expect(screen.queryByText("LegacyBridge.swift")).not.toBeInTheDocument();
+  });
+});
+
+// MIGRATE-024: 태그별 뷰 빈 상태
+describe("MIGRATE-024: 태그별 뷰 빈 상태", () => {
+  it("해당 태그 파일이 없으면 태그별 빈 상태 문구가 보인다", async () => {
+    await renderWithDataAndView([
+      makeFile("1", "LegacyBridge.swift", [
+        { id: "f1", name: "legacy", className: "LegacyBridge", completed: false },
+      ]),
+    ], "tck");
+
+    expect(screen.getByText("TCK 태그 파일이 없습니다")).toBeInTheDocument();
+    expect(screen.queryByText("LegacyBridge.swift")).not.toBeInTheDocument();
+  });
+
+  it("알 수 없는 view 값은 전체 보기로 폴백한다", async () => {
+    await renderWithDataAndView([
+      makeFile("1", "LegacyBridge.swift", [
+        { id: "f1", name: "legacy", className: "LegacyBridge", completed: false },
+      ]),
+    ], "unknown");
+
+    expect(screen.getByText("전체 파일")).toBeInTheDocument();
+    expect(screen.getByText("LegacyBridge.swift")).toBeInTheDocument();
   });
 });

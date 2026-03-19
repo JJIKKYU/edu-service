@@ -289,3 +289,52 @@ scenarios:
         expect:
           apiCalled: false
           cardVisible: true
+
+  - id: "MIGRATE-021"
+    name: "대시보드 뷰 전환 옵션 표시"
+    given: "태그가 있는 파일 카드들이 등록된 대시보드"
+    when: "대시보드 페이지에 진입한다"
+    then: "'전체', 'TCK', 'CMP' 보기 옵션이 표시되고 기본은 전체다"
+    examples:
+      - input:
+          files:
+            - { name: "HomeViewModel.swift", tags: "TCK" }
+            - { name: "NetworkManager.swift", tags: "CMP" }
+        expect:
+          viewOptions: ["전체", "TCK", "CMP"]
+          activeView: "전체"
+
+  - id: "MIGRATE-022"
+    name: "TCK 뷰로 요약과 목록 필터"
+    given: "TCK, CMP, 미태그 파일이 함께 등록된 대시보드"
+    when: "'TCK' 보기 옵션을 선택한다"
+    then: "TCK 태그가 있는 카드와 그 집계만 표시된다"
+    examples:
+      - input:
+          view: "tck"
+        expect:
+          visibleCards: ["HomeViewModel.swift", "SharedManager.swift"]
+          hiddenCards: ["NetworkManager.swift", "LegacyBridge.swift"]
+
+  - id: "MIGRATE-023"
+    name: "CMP 뷰로 요약과 목록 필터"
+    given: "TCK, CMP, 미태그 파일이 함께 등록된 대시보드"
+    when: "'CMP' 보기 옵션을 선택한다"
+    then: "CMP 태그가 있는 카드와 그 집계만 표시된다"
+    examples:
+      - input:
+          view: "cmp"
+        expect:
+          visibleCards: ["NetworkManager.swift", "SharedManager.swift"]
+          hiddenCards: ["HomeViewModel.swift", "LegacyBridge.swift"]
+
+  - id: "MIGRATE-024"
+    name: "태그별 뷰 빈 상태"
+    given: "미태그 파일만 등록된 대시보드"
+    when: "'TCK' 또는 'CMP' 보기 옵션을 선택한다"
+    then: "해당 태그 파일이 없다는 빈 상태 문구가 표시된다"
+    examples:
+      - input:
+          view: "tck"
+        expect:
+          emptyMessage: "TCK 태그 파일이 없습니다"
