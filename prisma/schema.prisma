@@ -1,0 +1,24 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model File {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  functions Function[]
+}
+
+model Function {
+  id        String  @id @default(cuid())
+  name      String
+  className String
+  completed Boolean @default(false)
+  file      File    @relation(fields: [fileId], references: [id])
+  fileId    String
+}
