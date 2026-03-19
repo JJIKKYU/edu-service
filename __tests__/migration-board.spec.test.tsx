@@ -19,6 +19,11 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     file: {
       findMany: vi.fn(),
+      updateMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    symbol: {
+      deleteMany: vi.fn(),
     },
   },
 }));
@@ -32,8 +37,17 @@ import MigrationPage from "@/app/migration/page";
 import { prisma } from "@/lib/prisma";
 import { toast } from "sonner";
 
-const mockPrisma = vi.mocked(prisma);
-const mockToastError = vi.mocked(toast.error);
+const mockPrisma = prisma as unknown as {
+  file: {
+    findMany: ReturnType<typeof vi.fn>;
+    updateMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
+  symbol: {
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
+};
+const mockToastError = toast.error as ReturnType<typeof vi.fn>;
 
 function createFileFromContent(name: string, content: string) {
   return new File([content], name, { type: "text/plain" });
@@ -44,10 +58,11 @@ type FileData = {
   name: string;
   tags: string;
   createdAt: Date;
-  functions: Array<{
+  symbols: Array<{
     id: string;
     name: string;
     className: string;
+    kind: "function" | "variable";
     completed: boolean;
     fileId: string;
   }>;
@@ -62,7 +77,13 @@ async function renderWithData(files: FileData[]) {
 function makeFile(
   id: string,
   name: string,
-  fns: Array<{ id: string; name: string; className: string; completed: boolean }>,
+  symbols: Array<{
+    id: string;
+    name: string;
+    className: string;
+    completed: boolean;
+    kind?: "function" | "variable";
+  }>,
   tags = ""
 ): FileData {
   return {
@@ -70,7 +91,11 @@ function makeFile(
     name,
     tags,
     createdAt: new Date(),
-    functions: fns.map((f) => ({ ...f, fileId: id })),
+    symbols: symbols.map((symbol) => ({
+      ...symbol,
+      kind: symbol.kind ?? "function",
+      fileId: id,
+    })),
   };
 }
 
@@ -88,7 +113,15 @@ async function uploadViaModal(
   const dialog = document.querySelector('[data-slot="dialog-content"]') as HTMLElement;
   const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
   const uploadOptions = options?.applyAccept === false ? { applyAccept: false } : undefined;
-  await user.upload(input, files, uploadOptions);
+  if (uploadOptions) {
+    await (user.upload as unknown as (...args: unknown[]) => Promise<void>)(
+      input,
+      files,
+      uploadOptions
+    );
+  } else {
+    await user.upload(input, files);
+  }
 
   // Check tags if specified
   if (options?.tags) {
@@ -146,7 +179,7 @@ describe("MIGRATE-002: Swift 파일 업로드 및 파싱", () => {
     ]);
 
     expect(screen.getByText("HomeViewModel.swift")).toBeInTheDocument();
-    expect(screen.getByText(/함수 2개/)).toBeInTheDocument();
+    expect(screen.getAllByText(/함수 2개/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -180,7 +213,7 @@ describe("MIGRATE-003: ObjC 파일 업로드 및 파싱", () => {
     ]);
 
     expect(screen.getByText("NetworkManager.m")).toBeInTheDocument();
-    expect(screen.getByText(/함수 2개/)).toBeInTheDocument();
+    expect(screen.getAllByText(/함수 2개/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -228,7 +261,7 @@ describe("MIGRATE-005: 함수 TCK 전환 완료 체크", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     await userEvent.click(checkboxes[0]);
 
-    expect(mockFetch).toHaveBeenCalledWith("/api/functions/f1", { method: "PATCH" });
+    expect(mockFetch).toHaveBeenCalledWith("/api/symbols/f1", { method: "PATCH" });
     expect(mockRefresh).toHaveBeenCalled();
   });
 
@@ -360,7 +393,7 @@ describe("MIGRATE-010: ObjC 헤더(.h) 파일 업로드 및 파싱", () => {
     ]);
 
     expect(screen.getByText("NetworkManager.h")).toBeInTheDocument();
-    expect(screen.getByText(/함수 2개/)).toBeInTheDocument();
+    expect(screen.getAllByText(/함수 2개/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -401,7 +434,7 @@ describe("MIGRATE-012: ObjC .h/.m 파일 그룹핑", () => {
     expect(screen.getByText(".m")).toBeInTheDocument();
 
     // 함수 중복 제거 — 2개만 표시 (4개가 아님)
-    expect(screen.getByText(/함수 2개/)).toBeInTheDocument();
+    expect(screen.getAllByText(/함수 2개/).length).toBeGreaterThanOrEqual(1);
 
     // 대시보드 집계도 그룹 기준 — 파일 수 1, 함수 수 2
     expect(screen.getByText("1")).toBeInTheDocument(); // file count
@@ -474,5 +507,201 @@ describe("MIGRATE-015: 두 태그 모두 선택하여 업로드", () => {
 
     const calledFormData = mockFetch.mock.calls[0][1].body as FormData;
     expect(calledFormData.get("tags")).toBe("CMP,TCK");
+  });
+});
+
+// MIGRATE-016: 등록된 파일 태그 인라인 수정
+describe("MIGRATE-016: 등록된 파일 태그 인라인 수정", () => {
+  it("파일 카드 상단 토글을 클릭하면 PATCH API가 호출된다", async () => {
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+      ], "TCK"),
+    ]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ fileIds: ["1"], tags: ["CMP", "TCK"], updatedCount: 1 }),
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "HomeViewModel.swift CMP 태그 적용" })
+    );
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/files/tags", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileIds: ["1"],
+        tags: ["TCK", "CMP"],
+      }),
+    });
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it("태그 토글을 눌러도 카드가 의도치 않게 펼쳐지지 않는다", async () => {
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+      ], "TCK"),
+    ]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ fileIds: ["1"], tags: ["CMP", "TCK"], updatedCount: 1 }),
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "HomeViewModel.swift CMP 태그 적용" })
+    );
+
+    expect(screen.queryByText("loadData")).not.toBeInTheDocument();
+  });
+
+  it("ObjC 그룹 카드에서 태그를 수정하면 묶인 파일 id 전체가 전송된다", async () => {
+    await renderWithData([
+      makeFile("1", "NetworkManager.h", [
+        { id: "f1", name: "fetchData", className: "NetworkManager", completed: false },
+      ], "TCK"),
+      makeFile("2", "NetworkManager.m", [
+        { id: "f2", name: "fetchData", className: "NetworkManager", completed: false },
+      ], ""),
+    ]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ fileIds: ["1", "2"], tags: [], updatedCount: 2 }),
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "NetworkManager TCK 태그 해제" })
+    );
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/files/tags", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileIds: ["1", "2"],
+        tags: [],
+      }),
+    });
+  });
+});
+
+// MIGRATE-017: 변수 항목 집계 및 체크
+describe("MIGRATE-017: 변수 항목 집계 및 체크", () => {
+  it("카드와 대시보드에 변수 개수가 별도로 표시되고 체크할 수 있다", async () => {
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+        {
+          id: "v1",
+          name: "state",
+          className: "HomeViewModel",
+          kind: "variable",
+          completed: false,
+        },
+      ]),
+    ]);
+
+    expect(screen.getAllByText(/함수 1개 · 변수 1개/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/함수 1개 · 변수 1개/).length).toBeGreaterThanOrEqual(1);
+
+    await userEvent.click(screen.getByText("HomeViewModel.swift"));
+    expect(screen.getByText("변수")).toBeInTheDocument();
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "v1", completed: true }),
+    });
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    await userEvent.click(checkboxes[1]);
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/symbols/v1", { method: "PATCH" });
+  });
+});
+
+// MIGRATE-018: 단일 파일 카드 삭제
+describe("MIGRATE-018: 단일 파일 카드 삭제", () => {
+  it("삭제 확인 후 DELETE API가 호출된다", async () => {
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+      ]),
+    ]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ fileIds: ["1"], deletedCount: 1 }),
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "HomeViewModel.swift 삭제" })
+    );
+
+    expect(screen.getByText("카드를 삭제할까요?")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/files", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileIds: ["1"],
+      }),
+    });
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+});
+
+// MIGRATE-019: ObjC 그룹 카드 삭제
+describe("MIGRATE-019: ObjC 그룹 카드 삭제", () => {
+  it("ObjC 그룹 카드 삭제 시 묶인 파일 id 전체가 전송된다", async () => {
+    await renderWithData([
+      makeFile("1", "NetworkManager.h", [
+        { id: "f1", name: "fetchData", className: "NetworkManager", completed: false },
+      ]),
+      makeFile("2", "NetworkManager.m", [
+        { id: "f2", name: "fetchData", className: "NetworkManager", completed: false },
+      ]),
+    ]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ fileIds: ["1", "2"], deletedCount: 2 }),
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "NetworkManager 삭제" })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/files", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileIds: ["1", "2"],
+      }),
+    });
+  });
+});
+
+// MIGRATE-020: 파일 삭제 취소
+describe("MIGRATE-020: 파일 삭제 취소", () => {
+  it("취소하면 삭제 API가 호출되지 않는다", async () => {
+    await renderWithData([
+      makeFile("1", "HomeViewModel.swift", [
+        { id: "f1", name: "loadData", className: "HomeViewModel", completed: false },
+      ]),
+    ]);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "HomeViewModel.swift 삭제" })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "취소" }));
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(screen.getByText("HomeViewModel.swift")).toBeInTheDocument();
   });
 });

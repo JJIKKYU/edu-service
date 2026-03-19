@@ -223,3 +223,69 @@ scenarios:
           functionCount: 2
           dashboardFileCount: 1
           dashboardFunctionCount: 2
+
+  - id: "MIGRATE-016"
+    name: "등록된 파일 태그 인라인 수정"
+    given: "'HomeViewModel.swift'가 등록된 대시보드"
+    when: "파일 카드 상단의 CMP 태그 토글을 클릭한다"
+    then: "해당 파일의 tags가 갱신된다"
+    examples:
+      - input:
+          existingTags: ["TCK"]
+          clickedTag: "CMP"
+        expect:
+          updatedTags: ["CMP", "TCK"]
+      - input:
+          existingTags: ["TCK"]
+          clickedTag: "TCK"
+        expect:
+          updatedTags: []
+
+  - id: "MIGRATE-017"
+    name: "변수 항목 집계 및 체크"
+    given: "'HomeViewModel.swift' 카드에 함수와 변수가 함께 표시된 대시보드"
+    when: "변수 항목의 체크박스를 클릭한다"
+    then: "변수 완료 상태와 카드/대시보드 집계가 갱신된다"
+    examples:
+      - input:
+          cardTitle: "HomeViewModel.swift"
+          variableName: "state"
+        expect:
+          variableChecked: true
+
+  - id: "MIGRATE-018"
+    name: "단일 파일 카드 삭제"
+    given: "'HomeViewModel.swift' 파일 카드가 표시된 대시보드"
+    when: "카드 우측의 삭제 버튼을 누르고 확인 다이얼로그에서 '삭제'를 클릭한다"
+    then: "해당 파일 카드가 삭제되고 대시보드 집계가 갱신된다"
+    examples:
+      - input:
+          fileName: "HomeViewModel.swift"
+          fileIds: ["1"]
+        expect:
+          deletedFileIds: ["1"]
+          dashboardFileCount: 0
+
+  - id: "MIGRATE-019"
+    name: "ObjC 그룹 카드 삭제"
+    given: "'NetworkManager' ObjC 그룹 카드가 표시된 대시보드"
+    when: "카드 우측의 삭제 버튼을 누르고 확인 다이얼로그에서 '삭제'를 클릭한다"
+    then: "그룹에 포함된 모든 파일이 함께 삭제된다"
+    examples:
+      - input:
+          cardTitle: "NetworkManager"
+          fileIds: ["1", "2"]
+        expect:
+          deletedFileIds: ["1", "2"]
+
+  - id: "MIGRATE-020"
+    name: "파일 삭제 취소"
+    given: "'HomeViewModel.swift' 파일 카드가 표시된 대시보드"
+    when: "카드 우측의 삭제 버튼을 누른 뒤 확인 다이얼로그에서 '취소'를 클릭한다"
+    then: "삭제 API는 호출되지 않고 카드가 유지된다"
+    examples:
+      - input:
+          fileName: "HomeViewModel.swift"
+        expect:
+          apiCalled: false
+          cardVisible: true

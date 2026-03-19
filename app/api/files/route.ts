@@ -4,7 +4,7 @@ import { parseFile } from "@/lib/parsers";
 
 export async function GET() {
   const files = await prisma.file.findMany({
-    include: { functions: true },
+    include: { symbols: true },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(files);
@@ -38,22 +38,63 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "이미 등록된 파일입니다" }, { status: 409 });
   }
 
-  // Save file + functions
+  // Save file + symbols
   const created = await prisma.file.create({
     data: {
       name: fileName,
       tags,
-      functions: {
+      symbols: {
         create: parseResult.groups.flatMap((group) =>
-          group.functions.map((fn) => ({
-            name: fn,
+          group.symbols.map((symbol) => ({
+            name: symbol.name,
             className: group.className,
+            kind: symbol.kind,
           }))
         ),
       },
     },
-    include: { functions: true },
+    include: { symbols: true },
   });
 
   return NextResponse.json(created, { status: 201 });
+}
+
+export async function DELETE(request: NextRequest) {
+  const body = (await request.json()) as { fileIds?: unknown } | null;
+
+  const fileIds = Array.isArray(body?.fileIds)
+    ? [...new Set(body.fileIds.filter((value): value is string => typeof value === "string"))]
+    : [];
+
+  if (fileIds.length === 0) {
+    return NextResponse.json(
+      { error: "삭제할 파일이 필요합니다" },
+      { status: 400 }
+    );
+  }
+
+  const files = await prisma.file.findMany({
+    where: { id: { in: fileIds } },
+    select: { id: true },
+  });
+
+  if (files.length !== fileIds.length) {
+    return NextResponse.json(
+      { error: "파일을 찾을 수 없습니다" },
+      { status: 404 }
+    );
+  }
+
+  await prisma.symbol.deleteMany({
+    where: { fileId: { in: fileIds } },
+  });
+
+  const deleted = await prisma.file.deleteMany({
+    where: { id: { in: fileIds } },
+  });
+
+  return NextResponse.json({
+    fileIds,
+    deletedCount: deleted.count,
+  });
 }
