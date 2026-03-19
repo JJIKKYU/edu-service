@@ -34,7 +34,7 @@ function sortFiles(files: StoredFileRecord[]) {
 }
 
 function shouldSeedDevSamples() {
-  return DEV_MIGRATION_SAMPLE_ENABLED && process.env.NODE_ENV === "development";
+  return DEV_MIGRATION_SAMPLE_ENABLED && process.env.NODE_ENV !== "test";
 }
 
 function buildStoredFileRecordFromSource(
