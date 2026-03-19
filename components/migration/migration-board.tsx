@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { groupFiles } from "@/lib/group-files";
 import {
   buildStoredFileRecord,
-  loadStoredFiles,
+  ensureStoredFiles,
   saveStoredFiles,
   type StoredFileRecord,
 } from "@/lib/migration-storage";
@@ -55,7 +55,7 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    setFiles(loadStoredFiles());
+    setFiles(ensureStoredFiles());
     setIsHydrated(true);
   }, []);
 
@@ -161,4 +161,3 @@ export function MigrationBoard({ view }: { view: MigrationView }) {
     </UploadDropZone>
   );
 }
-

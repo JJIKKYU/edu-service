@@ -5,6 +5,7 @@ import { normalizeTags, serializeTags, type Tag } from "@/lib/tags";
 import type { SymbolItem } from "@/lib/symbols";
 
 export const MIGRATION_STORAGE_KEY = "migration-board/files";
+export const DEV_MIGRATION_SAMPLE_ENABLED = true;
 
 export interface StoredFileRecord {
   id: string;
@@ -30,6 +31,119 @@ function sortFiles(files: StoredFileRecord[]) {
   return [...files].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+function shouldSeedDevSamples() {
+  return DEV_MIGRATION_SAMPLE_ENABLED && process.env.NODE_ENV === "development";
+}
+
+function buildStoredFileRecordFromSource(
+  filename: string,
+  source: string,
+  selectedTags: Tag[],
+  options?: {
+    createdAt?: string;
+    completedSymbolNames?: string[];
+  }
+): StoredFileRecord {
+  const parseResult = parseFile(filename, source);
+  const completedNames = new Set(options?.completedSymbolNames ?? []);
+
+  return {
+    id: createId("file"),
+    name: filename,
+    tags: serializeTags(normalizeTags(selectedTags)),
+    createdAt: options?.createdAt ?? new Date().toISOString(),
+    symbols: parseResult.groups.flatMap((group) =>
+      group.symbols.map((symbol) => ({
+        id: createId("symbol"),
+        name: symbol.name,
+        className: group.className,
+        kind: symbol.kind,
+        completed: completedNames.has(`${group.className}:${symbol.name}`),
+      }))
+    ),
+  };
+}
+
+function buildDevSampleFiles(): StoredFileRecord[] {
+  return sortFiles([
+    buildStoredFileRecordFromSource(
+      "HomeViewModel.swift",
+      `
+      import Foundation
+
+      final class HomeViewModel {
+        let title = "ThinQ Home"
+        var selectedTab = 0
+
+        func loadDashboard() {}
+        func refreshDevices() {}
+      }
+
+      func makeGreetingMessage() -> String { "Welcome" }
+      `,
+      ["TCK"],
+      {
+        createdAt: "2026-03-19T07:00:00.000Z",
+        completedSymbolNames: ["HomeViewModel:loadDashboard"],
+      }
+    ),
+    buildStoredFileRecordFromSource(
+      "DeviceRepository.swift",
+      `
+      protocol DeviceRepository {
+        func fetchDevices()
+        func fetchScenes()
+      }
+      `,
+      ["CMP"],
+      {
+        createdAt: "2026-03-19T06:00:00.000Z",
+      }
+    ),
+    buildStoredFileRecordFromSource(
+      "NetworkManager.h",
+      `
+      @interface NetworkManager
+      @property (nonatomic, strong) NSString *baseURL;
+      - (void)fetchDeviceList;
+      - (void)cancelAllRequests;
+      @end
+      `,
+      ["CMP"],
+      {
+        createdAt: "2026-03-19T05:00:00.000Z",
+      }
+    ),
+    buildStoredFileRecordFromSource(
+      "NetworkManager.m",
+      `
+      @interface NetworkManager
+      - (void)fetchDeviceList {}
+      - (void)cancelAllRequests {}
+      @end
+      `,
+      ["CMP"],
+      {
+        createdAt: "2026-03-19T04:59:00.000Z",
+        completedSymbolNames: ["NetworkManager:fetchDeviceList"],
+      }
+    ),
+  ]);
+}
+
+export function ensureStoredFiles(): StoredFileRecord[] {
+  if (!canUseStorage()) return [];
+
+  const existingFiles = loadStoredFiles();
+  if (existingFiles.length > 0 || !shouldSeedDevSamples()) {
+    return existingFiles;
+  }
+
+  const sampleFiles = buildDevSampleFiles();
+  saveStoredFiles(sampleFiles);
+  return sampleFiles;
 }
 
 export function loadStoredFiles(): StoredFileRecord[] {
@@ -67,24 +181,9 @@ export async function buildStoredFileRecord(
   file: File,
   selectedTags: Tag[]
 ): Promise<StoredFileRecord> {
-  const parseResult = parseFile(file.name, await file.text());
-  const createdAt = new Date().toISOString();
-  const tags = serializeTags(normalizeTags(selectedTags));
-
-  return {
-    id: createId("file"),
-    name: file.name,
-    tags,
-    createdAt,
-    symbols: parseResult.groups.flatMap((group) =>
-      group.symbols.map((symbol) => ({
-        id: createId("symbol"),
-        name: symbol.name,
-        className: group.className,
-        kind: symbol.kind,
-        completed: false,
-      }))
-    ),
-  };
+  return buildStoredFileRecordFromSource(
+    file.name,
+    await file.text(),
+    selectedTags
+  );
 }
-
