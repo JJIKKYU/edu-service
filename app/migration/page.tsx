@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
+import { groupFiles } from "@/lib/group-files";
 import { DashboardSummary } from "@/components/migration/dashboard-summary";
 import { FileCard } from "@/components/migration/file-card";
-import { FileUploadButton } from "@/components/migration/file-upload-button";
+import { FileUploadModal } from "@/components/migration/file-upload-modal";
 import { EmptyState } from "@/components/migration/empty-state";
 
 export default async function MigrationPage() {
@@ -12,9 +13,11 @@ export default async function MigrationPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  const totalFunctions = files.reduce((sum, f) => sum + f.functions.length, 0);
-  const completedFunctions = files.reduce(
-    (sum, f) => sum + f.functions.filter((fn) => fn.completed).length,
+  const groups = groupFiles(files);
+
+  const totalFunctions = groups.reduce((sum, g) => sum + g.functions.length, 0);
+  const completedFunctions = groups.reduce(
+    (sum, g) => sum + g.functions.filter((fn) => fn.completed).length,
     0
   );
 
@@ -22,24 +25,26 @@ export default async function MigrationPage() {
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-base font-bold">Migration Progress Board</h1>
-        <FileUploadButton />
+        <FileUploadModal />
       </div>
 
       <DashboardSummary
-        fileCount={files.length}
+        fileCount={groups.length}
         functionCount={totalFunctions}
         completedCount={completedFunctions}
       />
 
       <div className="mt-6 flex flex-col gap-3">
-        {files.length === 0 ? (
+        {groups.length === 0 ? (
           <EmptyState />
         ) : (
-          files.map((file) => (
+          groups.map((group) => (
             <FileCard
-              key={file.id}
-              name={file.name}
-              functions={file.functions}
+              key={group.key}
+              displayName={group.displayName}
+              files={group.files}
+              functions={group.functions}
+              tags={group.tags}
             />
           ))
         )}

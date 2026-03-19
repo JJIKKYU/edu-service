@@ -7,6 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { FunctionList } from "./function-list";
 
 interface FunctionItem {
@@ -17,11 +18,18 @@ interface FunctionItem {
 }
 
 interface FileCardProps {
-  name: string;
+  displayName: string;
+  files: Array<{ id: string; name: string }>;
   functions: FunctionItem[];
+  tags: string[];
 }
 
-export function FileCard({ name, functions }: FileCardProps) {
+function getExtension(filename: string): string {
+  const dotIndex = filename.lastIndexOf(".");
+  return dotIndex === -1 ? "" : filename.slice(dotIndex);
+}
+
+export function FileCard({ displayName, files, functions, tags }: FileCardProps) {
   const totalFunctions = functions.length;
   const completedFunctions = functions.filter((f) => f.completed).length;
   const progressRate =
@@ -33,12 +41,26 @@ export function FileCard({ name, functions }: FileCardProps) {
   const classNames = [...new Set(functions.map((f) => f.className))];
   const subtitle = `함수 ${totalFunctions}개 · ${classNames.join(", ")}`;
 
+  const extensions = files.map((f) => getExtension(f.name));
+
   return (
     <Collapsible className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
       <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left">
         <FileCodeIcon className="size-[18px] shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold">{name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-bold">{displayName}</p>
+            {extensions.map((ext) => (
+              <Badge key={ext} variant="secondary">
+                {ext}
+              </Badge>
+            ))}
+            {tags.map((tag) => (
+              <Badge key={tag} variant="outline">
+                {tag}
+              </Badge>
+            ))}
+          </div>
           <p className="text-muted-foreground text-xs">{subtitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-3">

@@ -42,6 +42,7 @@ function createFileFromContent(name: string, content: string) {
 type FileData = {
   id: string;
   name: string;
+  tags: string;
   createdAt: Date;
   functions: Array<{
     id: string;
@@ -61,14 +62,43 @@ async function renderWithData(files: FileData[]) {
 function makeFile(
   id: string,
   name: string,
-  fns: Array<{ id: string; name: string; className: string; completed: boolean }>
+  fns: Array<{ id: string; name: string; className: string; completed: boolean }>,
+  tags = ""
 ): FileData {
   return {
     id,
     name,
+    tags,
     createdAt: new Date(),
     functions: fns.map((f) => ({ ...f, fileId: id })),
   };
+}
+
+/** Opens the upload modal, selects files, optionally checks tags, and clicks confirm */
+async function uploadViaModal(
+  files: File | File[],
+  options?: { tags?: string[]; applyAccept?: boolean }
+) {
+  const user = userEvent.setup();
+
+  // Click "파일 업로드" to open modal
+  await user.click(screen.getByRole("button", { name: /파일 업로드/ }));
+
+  // Select files via hidden input inside the modal dialog
+  const dialog = document.querySelector('[data-slot="dialog-content"]') as HTMLElement;
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  const uploadOptions = options?.applyAccept === false ? { applyAccept: false } : undefined;
+  await user.upload(input, files, uploadOptions);
+
+  // Check tags if specified
+  if (options?.tags) {
+    for (const tag of options.tags) {
+      await user.click(screen.getByLabelText(tag));
+    }
+  }
+
+  // Click confirm
+  await user.click(screen.getByRole("button", { name: "확인" }));
 }
 
 beforeEach(() => {
@@ -101,8 +131,7 @@ describe("MIGRATE-002: Swift 파일 업로드 및 파싱", () => {
       json: async () => ({ id: "1", name: "HomeViewModel.swift" }),
     });
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    await userEvent.upload(input, file);
+    await uploadViaModal(file);
 
     expect(mockFetch).toHaveBeenCalledWith("/api/files", expect.objectContaining({ method: "POST" }));
     expect(mockRefresh).toHaveBeenCalled();
@@ -118,7 +147,6 @@ describe("MIGRATE-002: Swift 파일 업로드 및 파싱", () => {
 
     expect(screen.getByText("HomeViewModel.swift")).toBeInTheDocument();
     expect(screen.getByText(/함수 2개/)).toBeInTheDocument();
-    // 요약 카드에 0%가 표시된다 (파일 카드의 0%와 합해 다수)
     expect(screen.getAllByText("0%").length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -138,8 +166,7 @@ describe("MIGRATE-003: ObjC 파일 업로드 및 파싱", () => {
       json: async () => ({ id: "1", name: "NetworkManager.m" }),
     });
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    await userEvent.upload(input, file);
+    await uploadViaModal(file);
 
     expect(mockFetch).toHaveBeenCalledWith("/api/files", expect.objectContaining({ method: "POST" }));
   });
@@ -213,7 +240,6 @@ describe("MIGRATE-005: 함수 TCK 전환 완료 체크", () => {
       ]),
     ]);
 
-    // 50%가 요약 카드와 파일 카드 모두에 표시됨
     expect(screen.getAllByText("50%").length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -256,8 +282,7 @@ describe("MIGRATE-007: 중복 파일 업로드 거부", () => {
       json: async () => ({ error: "이미 등록된 파일입니다" }),
     });
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    await userEvent.upload(input, file);
+    await uploadViaModal(file);
 
     expect(mockToastError).toHaveBeenCalledWith("이미 등록된 파일입니다");
   });
@@ -276,9 +301,7 @@ describe("MIGRATE-008: 지원하지 않는 파일 형식 업로드 거부", () =
       json: async () => ({ error: "지원하지 않는 파일 형식입니다" }),
     });
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    // applyAccept: false to bypass HTML accept filter (server validates too)
-    await userEvent.upload(input, file, { applyAccept: false });
+    await uploadViaModal(file);
 
     expect(mockToastError).toHaveBeenCalledWith("지원하지 않는 파일 형식입니다");
   });
@@ -300,7 +323,7 @@ describe("MIGRATE-009: 파일 카드 접기 (토글)", () => {
     await userEvent.click(trigger);
     expect(screen.getByText("loadData")).toBeInTheDocument();
 
-    // 다시 클릭 → 접기 (collapsible content should have hidden attribute)
+    // 다시 클릭 → 접기
     await userEvent.click(trigger);
 
     const collapsibleContent = document.querySelector('[data-state="closed"][data-slot="collapsible-content"]');
@@ -323,8 +346,7 @@ describe("MIGRATE-010: ObjC 헤더(.h) 파일 업로드 및 파싱", () => {
       json: async () => ({ id: "1", name: "NetworkManager.h" }),
     });
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    await userEvent.upload(input, file);
+    await uploadViaModal(file);
 
     expect(mockFetch).toHaveBeenCalledWith("/api/files", expect.objectContaining({ method: "POST" }));
   });
@@ -354,5 +376,103 @@ describe("MIGRATE-011: 파일 내 모든 함수 체크 완료", () => {
     ]);
 
     expect(screen.getAllByText("100%").length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// MIGRATE-012: ObjC .h/.m 파일 그룹핑
+describe("MIGRATE-012: ObjC .h/.m 파일 그룹핑", () => {
+  it(".h와 .m이 같은 base name이면 하나의 카드로 표시된다", async () => {
+    await renderWithData([
+      makeFile("1", "NetworkManager.h", [
+        { id: "f1", name: "fetchData", className: "NetworkManager", completed: false },
+        { id: "f2", name: "cancelRequest", className: "NetworkManager", completed: false },
+      ]),
+      makeFile("2", "NetworkManager.m", [
+        { id: "f3", name: "fetchData", className: "NetworkManager", completed: false },
+        { id: "f4", name: "cancelRequest", className: "NetworkManager", completed: false },
+      ]),
+    ]);
+
+    // 하나의 그룹으로 표시 — "NetworkManager" 카드 1개
+    expect(screen.getByText("NetworkManager")).toBeInTheDocument();
+
+    // 확장자 Badge 표시
+    expect(screen.getByText(".h")).toBeInTheDocument();
+    expect(screen.getByText(".m")).toBeInTheDocument();
+
+    // 함수 중복 제거 — 2개만 표시 (4개가 아님)
+    expect(screen.getByText(/함수 2개/)).toBeInTheDocument();
+
+    // 대시보드 집계도 그룹 기준 — 파일 수 1, 함수 수 2
+    expect(screen.getByText("1")).toBeInTheDocument(); // file count
+    expect(screen.getByText("2")).toBeInTheDocument(); // function count
+  });
+});
+
+// MIGRATE-013: 파일 업로드 모달에서 태그 선택
+describe("MIGRATE-013: 파일 업로드 모달에서 태그 선택", () => {
+  it("TCK 태그를 체크하고 업로드하면 tags가 포함된다", async () => {
+    await renderWithData([]);
+
+    const file = createFileFromContent(
+      "HomeViewModel.swift",
+      "class HomeViewModel {\n  func loadData() {}\n  func refresh() {}\n}"
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "1", name: "HomeViewModel.swift" }),
+    });
+
+    await uploadViaModal(file, { tags: ["TCK"] });
+
+    expect(mockFetch).toHaveBeenCalledWith("/api/files", expect.objectContaining({ method: "POST" }));
+
+    const calledFormData = mockFetch.mock.calls[0][1].body as FormData;
+    expect(calledFormData.get("tags")).toBe("TCK");
+  });
+});
+
+// MIGRATE-014: 태그 없이 파일 업로드
+describe("MIGRATE-014: 태그 없이 파일 업로드", () => {
+  it("태그 없이 업로드하면 tags가 빈 문자열이다", async () => {
+    await renderWithData([]);
+
+    const file = createFileFromContent(
+      "HomeViewModel.swift",
+      "class HomeViewModel {\n  func loadData() {}\n}"
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "1", name: "HomeViewModel.swift" }),
+    });
+
+    await uploadViaModal(file);
+
+    const calledFormData = mockFetch.mock.calls[0][1].body as FormData;
+    expect(calledFormData.get("tags")).toBe("");
+  });
+});
+
+// MIGRATE-015: 두 태그 모두 선택하여 업로드
+describe("MIGRATE-015: 두 태그 모두 선택하여 업로드", () => {
+  it("TCK, CMP 모두 체크하면 정렬된 tags가 전송된다", async () => {
+    await renderWithData([]);
+
+    const file = createFileFromContent(
+      "HomeViewModel.swift",
+      "class HomeViewModel {\n  func loadData() {}\n}"
+    );
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "1", name: "HomeViewModel.swift" }),
+    });
+
+    await uploadViaModal(file, { tags: ["TCK", "CMP"] });
+
+    const calledFormData = mockFetch.mock.calls[0][1].body as FormData;
+    expect(calledFormData.get("tags")).toBe("CMP,TCK");
   });
 });

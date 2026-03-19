@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
   }
 
   const fileName = file.name;
+  const tagsRaw = formData.get("tags") as string | null;
+  const tags = tagsRaw ?? "";
 
   // Parse file (throws for unsupported extensions)
   let parseResult;
@@ -40,6 +42,7 @@ export async function POST(request: NextRequest) {
   const created = await prisma.file.create({
     data: {
       name: fileName,
+      tags,
       functions: {
         create: parseResult.groups.flatMap((group) =>
           group.functions.map((fn) => ({

@@ -149,6 +149,44 @@ scenarios:
           dashboardFunctionCount: 2
           dashboardCompletionRate: "0%"
 
+  - id: "MIGRATE-013"
+    name: "파일 업로드 모달에서 태그 선택"
+    given: "대시보드에서 '파일 업로드' 버튼을 클릭한 상태"
+    when: "파일을 선택하고 TCK 태그를 체크한 후 '확인'을 클릭한다"
+    then: "파일이 TCK 태그와 함께 업로드된다"
+    examples:
+      - input:
+          fileName: "HomeViewModel.swift"
+          fileContent: "class HomeViewModel {\n  func loadData() {}\n  func refresh() {}\n}"
+          selectedTags: ["TCK"]
+        expect:
+          uploadedTags: "TCK"
+
+  - id: "MIGRATE-014"
+    name: "태그 없이 파일 업로드"
+    given: "업로드 모달이 열린 상태"
+    when: "파일만 선택하고 태그 없이 '확인'을 클릭한다"
+    then: "파일이 태그 없이 업로드된다"
+    examples:
+      - input:
+          fileName: "HomeViewModel.swift"
+          fileContent: "class HomeViewModel {\n  func loadData() {}\n}"
+        expect:
+          uploadedTags: ""
+
+  - id: "MIGRATE-015"
+    name: "두 태그 모두 선택하여 업로드"
+    given: "업로드 모달이 열린 상태"
+    when: "파일을 선택하고 TCK, CMP 모두 체크한 후 '확인'을 클릭한다"
+    then: "파일이 TCK, CMP 태그와 함께 업로드된다"
+    examples:
+      - input:
+          fileName: "HomeViewModel.swift"
+          fileContent: "class HomeViewModel {\n  func loadData() {}\n}"
+          selectedTags: ["TCK", "CMP"]
+        expect:
+          uploadedTags: "CMP,TCK"
+
   - id: "MIGRATE-011"
     name: "파일 내 모든 함수 체크 완료"
     given: "'HomeViewModel.swift' 카드가 확장된 상태 (함수 2개, 모두 미완료)"
@@ -161,3 +199,27 @@ scenarios:
         expect:
           progressRate: "100%"
           dashboardCompletionRate: "100%"
+
+  - id: "MIGRATE-012"
+    name: "ObjC .h/.m 파일 그룹핑"
+    given: "NetworkManager.h와 NetworkManager.m이 각각 등록된 대시보드"
+    when: "대시보드 페이지에 진입한다"
+    then: "하나의 'NetworkManager' 카드로 표시되고, .h/.m 확장자 Badge가 보이며, 함수 중복이 제거되고, 대시보드 집계가 그룹 기준으로 계산된다"
+    examples:
+      - input:
+          files:
+            - name: "NetworkManager.h"
+              functions:
+                - { name: "fetchData", className: "NetworkManager" }
+                - { name: "cancelRequest", className: "NetworkManager" }
+            - name: "NetworkManager.m"
+              functions:
+                - { name: "fetchData", className: "NetworkManager" }
+                - { name: "cancelRequest", className: "NetworkManager" }
+        expect:
+          cardCount: 1
+          cardTitle: "NetworkManager"
+          extensionBadges: [".h", ".m"]
+          functionCount: 2
+          dashboardFileCount: 1
+          dashboardFunctionCount: 2

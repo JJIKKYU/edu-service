@@ -10,6 +10,7 @@ datasource db {
 model File {
   id        String     @id @default(cuid())
   name      String     @unique
+  tags      String     @default("")
   createdAt DateTime   @default(now())
   functions Function[]
 }
